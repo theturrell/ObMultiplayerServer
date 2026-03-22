@@ -1,0 +1,12 @@
+{
+  "host": "0.0.0.0",
+  "port": 7777,
+  "log_level": "INFO",
+  "room_capacity": 8,
+  "require_token": false,
+  "server_token": "change-me-for-private-sessions",
+  "state_root": "server_state",
+  "protocol_version": 1,
+  "host_player_id": "host-player",
+  "require_host_for_world_state": true
+}

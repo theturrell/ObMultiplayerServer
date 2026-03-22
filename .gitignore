@@ -20,13 +20,23 @@ launcher/dist/
 launcher/spec/
 server/spec/
 
-bundles/out/
+bundles/out/*
+!bundles/out/PseudoOnBlivion-Host/
+!bundles/out/PseudoOnBlivion-Host/**
+!bundles/out/PseudoOnBlivion-Joiner/
+!bundles/out/PseudoOnBlivion-Joiner/**
+!bundles/out/installers/
+!bundles/out/installers/**
+!bundles/out/PseudoOnBlivion-Host.zip
+!bundles/out/PseudoOnBlivion-Joiner.zip
 playtest_logs/
 server_state/
 
 *.log
 *.zip
 *.7z
+!bundles/out/PseudoOnBlivion-Host.zip
+!bundles/out/PseudoOnBlivion-Joiner.zip
 
 xOBSE-master/
 xobse-source.zip
