@@ -7,7 +7,10 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
+import urllib.request
+import zipfile
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable
@@ -26,6 +29,8 @@ DEFAULT_TOKEN = "change-me"
 DEFAULT_SEND_INTERVAL_MS = "100"
 DEFAULT_LOG_LEVEL = "INFO"
 APP_PROTOCOL_VERSION = "1"
+REPO_ZIP_URL = "https://github.com/theturrell/ObMultiplayerServer/archive/refs/heads/master.zip"
+HOST_BUNDLE_RELATIVE = Path("bundles") / "out" / "PseudoOnBlivion-Host"
 
 
 def app_root() -> Path:
@@ -65,6 +70,112 @@ def settings_path() -> Path:
     root = appdata / "PseudoOnBlivion"
     root.mkdir(parents=True, exist_ok=True)
     return root / "host_settings.json"
+
+
+def appdata_root() -> Path:
+    root = settings_path().parent
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def host_runtime_dir() -> Path:
+    root = appdata_root() / "HostRuntime"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def host_runtime_server_dir() -> Path:
+    root = host_runtime_dir() / "server"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def host_runtime_state_dir() -> Path:
+    root = host_runtime_dir() / "server_state"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def can_write_to_directory(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write-test.tmp"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def launch_update_script(script_path: Path, target_dir: Path, source_dir: Path, exe_name: str) -> None:
+    command = [
+        "powershell",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script_path),
+        "-WaitPid",
+        str(os.getpid()),
+        "-SourceDir",
+        str(source_dir),
+        "-TargetDir",
+        str(target_dir),
+        "-ExeName",
+        exe_name,
+    ]
+
+    if can_write_to_directory(target_dir):
+        subprocess.Popen(command, cwd=target_dir)
+        return
+
+    ps_args = ",".join("'" + arg.replace("'", "''") + "'" for arg in command[1:])
+    elevated = (
+        f"Start-Process -FilePath '{command[0]}' -Verb RunAs "
+        f"-ArgumentList @({ps_args})"
+    )
+    subprocess.Popen(
+        [
+            "powershell",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            elevated,
+        ],
+        cwd=target_dir,
+    )
+
+
+def write_update_script(root: Path) -> Path:
+    script_path = root / "apply_update.ps1"
+    script_path.write_text(
+        "\n".join(
+            [
+                "param(",
+                "    [int]$WaitPid,",
+                "    [string]$SourceDir,",
+                "    [string]$TargetDir,",
+                "    [string]$ExeName",
+                ")",
+                "$deadline = (Get-Date).AddSeconds(30)",
+                "while (Get-Process -Id $WaitPid -ErrorAction SilentlyContinue) {",
+                "    if ((Get-Date) -gt $deadline) { break }",
+                "    Start-Sleep -Milliseconds 500",
+                "}",
+                "New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null",
+                "robocopy $SourceDir $TargetDir /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null",
+                "$code = $LASTEXITCODE",
+                "if ($code -ge 8) {",
+                '    throw "Update copy failed with robocopy exit code $code."',
+                "}",
+                "$exePath = Join-Path $TargetDir $ExeName",
+                "if (Test-Path $exePath) {",
+                "    Start-Process -FilePath $exePath -WorkingDirectory $TargetDir",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return script_path
 
 
 def support_plugin_dir() -> Path:
@@ -199,11 +310,11 @@ def relay_config_text(values: dict[str, str | bool]) -> str:
         "host": values["bind_host"],
         "port": int(values["server_port"]),
         "log_level": values["log_level"],
-        "log_file": str(server_dir() / "relay.log"),
+        "log_file": str(host_runtime_server_dir() / "relay.log"),
         "room_capacity": 8,
         "require_token": bool(values["require_token"]),
         "server_token": values["server_token"],
-        "state_root": str(app_root() / "server_state"),
+        "state_root": str(host_runtime_state_dir()),
         "protocol_version": int(APP_PROTOCOL_VERSION),
         "host_player_id": values["player_id"],
         "require_host_for_world_state": True,
@@ -324,6 +435,7 @@ class HostApp:
         ttk.Button(actions, text="Install xOBSE", style="Secondary.TButton", command=self.install_xobse).pack(side="left", padx=(10, 0))
         ttk.Button(actions, text="Open Firewall", style="Secondary.TButton", command=self.open_firewall).pack(side="left", padx=(10, 0))
         ttk.Button(actions, text="Save Settings", style="Secondary.TButton", command=self.save_settings_only).pack(side="left", padx=(10, 0))
+        ttk.Button(actions, text="Update App", style="Secondary.TButton", command=self.update_app).pack(side="left", padx=(10, 0))
 
         relay_row = ttk.Frame(card, style="Card.TFrame")
         relay_row.grid(row=13, column=0, columnspan=3, sticky="ew", pady=(14, 0))
@@ -458,10 +570,11 @@ class HostApp:
         return None
 
     def relay_config_path(self) -> Path:
-        return server_dir() / "relay_config.json"
+        return host_runtime_server_dir() / "relay_config.json"
 
     def write_runtime_files(self, values: dict[str, str | bool]) -> None:
-        server_dir().mkdir(parents=True, exist_ok=True)
+        host_runtime_server_dir().mkdir(parents=True, exist_ok=True)
+        host_runtime_state_dir().mkdir(parents=True, exist_ok=True)
         self.relay_config_path().write_text(relay_config_text(values), encoding="utf-8")
 
         game_path = Path(str(values["game_path"]))
@@ -592,6 +705,30 @@ class HostApp:
             self.post_status("Firewall rule applied.")
 
         self.run_background("Opening firewall...", work)
+
+    def update_app(self) -> None:
+        def work() -> None:
+            self.post_status("Downloading the latest host bundle from GitHub...")
+            temp_root = Path(tempfile.mkdtemp(prefix="pseudoonblivion-host-update-"))
+            archive_path = temp_root / "repo.zip"
+            urllib.request.urlretrieve(REPO_ZIP_URL, archive_path)
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(temp_root)
+
+            extracted_roots = [path for path in temp_root.iterdir() if path.is_dir()]
+            if not extracted_roots:
+                raise RuntimeError("Updater failed: downloaded repo archive was empty.")
+
+            source_dir = extracted_roots[0] / HOST_BUNDLE_RELATIVE
+            if not source_dir.exists():
+                raise RuntimeError(f"Updater failed: host bundle not found at {source_dir}.")
+
+            script_path = write_update_script(temp_root)
+            self.post_status("Applying update and relaunching the host app...")
+            launch_update_script(script_path, app_root(), source_dir, "PseudoOnBlivionHost.exe")
+            self.root.after(100, self.root.destroy)
+
+        self.run_background("Updating host app...", work)
 
     def run_preflight(self) -> None:
         error = self.validate_inputs()

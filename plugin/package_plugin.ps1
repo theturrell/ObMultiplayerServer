@@ -1,5 +1,5 @@
 param(
-    [string]$Configuration = "Debug",
+    [string]$Configuration = "Release",
     [string]$OutputRoot = "",
     [string]$IniPath = ""
 )
