@@ -1,0 +1,12 @@
+[network]
+server_host=127.0.0.1
+server_port=7777
+room=session-1
+player_id=player-local
+character_name=HeroOfKvatch
+host_authority=false
+server_token=
+send_interval_ms=100
+
+[logging]
+log_path=PseudoOnBlivion.log
