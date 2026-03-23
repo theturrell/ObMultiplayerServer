@@ -16,6 +16,12 @@ $bundleRoot = Join-Path $root "bundles\out"
 $hostRoot = Join-Path $bundleRoot "PseudoOnBlivion-Host"
 $joinRoot = Join-Path $bundleRoot "PseudoOnBlivion-Joiner"
 
+$gitCommit = (& git -C $root rev-parse HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitCommit)) {
+    $gitCommit = "unknown"
+}
+$buildStamp = (Get-Date).ToUniversalTime().ToString("o")
+
 Remove-Item $hostRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $joinRoot -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -79,6 +85,12 @@ PSEUDO-ONBLIVION HOST BUNDLE
 7. After a playtest, run scripts\collect_playtest_logs.ps1 -IncludeServerState to bundle the logs and room snapshots
 "@ | Set-Content (Join-Path $hostRoot "README_HOST.txt")
 
+@{
+    app = "host"
+    commit = $gitCommit.Trim()
+    builtAtUtc = $buildStamp
+} | ConvertTo-Json | Set-Content (Join-Path $hostRoot "version.json")
+
 @"
 PSEUDO-ONBLIVION JOINER BUNDLE
 
@@ -89,6 +101,12 @@ PSEUDO-ONBLIVION JOINER BUNDLE
 5. Press Join Game
 6. After a playtest, run scripts\collect_playtest_logs.ps1 to bundle your client log and config
 "@ | Set-Content (Join-Path $joinRoot "README_JOINER.txt")
+
+@{
+    app = "joiner"
+    commit = $gitCommit.Trim()
+    builtAtUtc = $buildStamp
+} | ConvertTo-Json | Set-Content (Join-Path $joinRoot "version.json")
 
 $hostZip = Join-Path $bundleRoot "PseudoOnBlivion-Host.zip"
 $joinZip = Join-Path $bundleRoot "PseudoOnBlivion-Joiner.zip"

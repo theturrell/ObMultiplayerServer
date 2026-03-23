@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 from queue import Empty, Queue
+from datetime import datetime
 from typing import Callable
 
 import tkinter as tk
@@ -31,6 +32,7 @@ DEFAULT_LOG_LEVEL = "INFO"
 APP_PROTOCOL_VERSION = "1"
 REPO_ZIP_URL = "https://github.com/theturrell/ObMultiplayerServer/archive/refs/heads/master.zip"
 HOST_BUNDLE_RELATIVE = Path("bundles") / "out" / "PseudoOnBlivion-Host"
+VERSION_FILE_NAME = "version.json"
 
 
 def app_root() -> Path:
@@ -176,6 +178,31 @@ def write_update_script(root: Path) -> Path:
         encoding="utf-8",
     )
     return script_path
+
+
+def version_file_for(root: Path) -> Path:
+    return root / VERSION_FILE_NAME
+
+
+def load_bundle_version(root: Path) -> dict[str, str]:
+    path = version_file_for(root)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def parse_build_timestamp(payload: dict[str, str]) -> datetime | None:
+    value = str(payload.get("builtAtUtc", "")).strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def support_plugin_dir() -> Path:
@@ -722,6 +749,16 @@ class HostApp:
             source_dir = extracted_roots[0] / HOST_BUNDLE_RELATIVE
             if not source_dir.exists():
                 raise RuntimeError(f"Updater failed: host bundle not found at {source_dir}.")
+
+            local_version = load_bundle_version(app_root())
+            remote_version = load_bundle_version(source_dir)
+            local_built_at = parse_build_timestamp(local_version)
+            remote_built_at = parse_build_timestamp(remote_version)
+            if local_built_at is not None and remote_built_at is not None and remote_built_at <= local_built_at:
+                raise RuntimeError(
+                    "Updater cancelled: the downloaded host bundle is not newer than the installed one. "
+                    "Push the rebuilt bundles to GitHub first, then try Update App again."
+                )
 
             script_path = write_update_script(temp_root)
             self.post_status("Applying update and relaunching the host app...")
