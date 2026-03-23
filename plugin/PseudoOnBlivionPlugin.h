@@ -47,6 +47,7 @@ class PseudoOnBlivionPlugin {
     bool TryExtractInt32(const std::string& source, const std::string& key, std::int32_t& value) const;
     bool TryExtractInt64(const std::string& source, const std::string& key, std::int64_t& value) const;
     bool TryExtractBool(const std::string& source, const std::string& key, bool& value) const;
+    bool TryExtractCharacterProfile(const std::string& source, CharacterProfile& profile) const;
     bool TryParsePeerLeft(const std::string& message, std::string& sender) const;
     void RunSendLoop();
     void HandleIncomingMessage(const std::string& message);

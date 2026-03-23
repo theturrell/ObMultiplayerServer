@@ -110,6 +110,48 @@ std::string SafeName(const RuntimeString& value) {
     return {};
 }
 
+std::string SafeBsString(const BSStringT& value) {
+    return value.m_data != nullptr ? value.m_data : std::string();
+}
+
+std::string FormDisplayName(TESForm* form) {
+    if (form == nullptr) {
+        return {};
+    }
+
+    switch (form->typeID) {
+    case kFormType_Class:
+        return SafeBsString(reinterpret_cast<TESClass*>(form)->fullName.name);
+    case kFormType_Race:
+        return SafeBsString(reinterpret_cast<TESRace*>(form)->fullName.name);
+    case kFormType_BirthSign:
+        return SafeBsString(reinterpret_cast<BirthSign*>(form)->fullName.name);
+    case kFormType_Hair:
+        return SafeBsString(reinterpret_cast<TESHair*>(form)->fullName.name);
+    case kFormType_Eyes:
+        return SafeBsString(reinterpret_cast<TESEyes*>(form)->fullName.name);
+    case kFormType_NPC:
+        return SafeBsString(reinterpret_cast<TESNPC*>(form)->fullName.name);
+    default:
+        return {};
+    }
+}
+
+std::string QuoteConsoleString(std::string value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (const char ch : value) {
+        if (ch == '"') {
+            escaped.push_back('\'');
+        } else {
+            escaped.push_back(ch);
+        }
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
 std::string DescribeCell(const RuntimeCell* cell) {
     if (cell == nullptr) {
         return "UNRESOLVED_RUNTIME";
@@ -200,12 +242,48 @@ class RuntimeBackedGameAdapter : public GameAdapter {
         snapshot.magicka = player->magicka;
         snapshot.stamina = player->stamina;
         auto* const actor = reinterpret_cast<PlayerCharacter*>(player);
+        auto* const actor_base = reinterpret_cast<TESNPC*>(actor->baseForm);
         snapshot.equippedWeaponFormId.clear();
         snapshot.isInCombat = actor->IsInCombat(false);
         if (TESForm* const combat_target = actor->GetCombatTarget()) {
             snapshot.combatTargetRefId = FormatFormId(combat_target);
         } else {
             snapshot.combatTargetRefId.clear();
+        }
+
+        snapshot.profile = {};
+        snapshot.profile.scale = player->scale;
+        if (actor_base != nullptr) {
+            snapshot.profile.characterName = FormDisplayName(actor_base);
+            snapshot.profile.isFemale = actor_base->actorBaseData.IsFemale();
+            snapshot.profile.hairColorR = actor_base->hairColorRGB[0];
+            snapshot.profile.hairColorG = actor_base->hairColorRGB[1];
+            snapshot.profile.hairColorB = actor_base->hairColorRGB[2];
+
+            if (actor_base->race.race != nullptr) {
+                snapshot.profile.raceFormId = FormatFormId(actor_base->race.race);
+                snapshot.profile.raceName = FormDisplayName(actor_base->race.race);
+            }
+
+            if (TESClass* const player_class = actor_base->npcClass) {
+                snapshot.profile.classFormId = FormatFormId(player_class);
+                snapshot.profile.className = FormDisplayName(player_class);
+            }
+
+            if (actor_base->hair != nullptr) {
+                snapshot.profile.hairFormId = FormatFormId(actor_base->hair);
+                snapshot.profile.hairName = FormDisplayName(actor_base->hair);
+            }
+
+            if (actor_base->eyes != nullptr) {
+                snapshot.profile.eyesFormId = FormatFormId(actor_base->eyes);
+                snapshot.profile.eyesName = FormDisplayName(actor_base->eyes);
+            }
+        }
+
+        if (actor->birthSign != nullptr) {
+            snapshot.profile.birthsignFormId = FormatFormId(actor->birthSign);
+            snapshot.profile.birthsignName = FormDisplayName(actor->birthSign);
         }
 
         if (logger_ && !warned_about_placeholder_) {
@@ -256,7 +334,9 @@ class RuntimeBackedGameAdapter : public GameAdapter {
             SnapProxyToState(*proxy.reference, state);
         }
 
+        ApplyProxyProfile(proxy, state);
         ApplyProxyVitals(proxy, state);
+        SyncProxyEquipment(proxy, state);
         SyncProxyCombat(proxy, state);
 
         if (logger_ && !announced_remote_peer_) {
@@ -490,7 +570,9 @@ class RuntimeBackedGameAdapter : public GameAdapter {
                 SnapProxyToState(*proxy.reference, proxy.target_state);
             }
 
+            ApplyProxyProfile(proxy, proxy.target_state);
             ApplyProxyVitals(proxy, proxy.target_state);
+            SyncProxyEquipment(proxy, proxy.target_state);
             SyncProxyCombat(proxy, proxy.target_state);
             SmoothProxyTowardState(*proxy.reference, proxy.target_state);
         }
@@ -509,6 +591,8 @@ class RuntimeBackedGameAdapter : public GameAdapter {
         bool has_target_state = false;
         std::string engaged_target_ref_id;
         std::string last_animation_group;
+        CharacterProfile applied_profile{};
+        std::string equipped_weapon_form_id;
         float last_health = -1.0f;
         float last_magicka = -1.0f;
         float last_stamina = -1.0f;
@@ -588,6 +672,8 @@ class RuntimeBackedGameAdapter : public GameAdapter {
         }
         proxy.engaged_target_ref_id.clear();
         proxy.last_animation_group.clear();
+        proxy.equipped_weapon_form_id.clear();
+        proxy.applied_profile = {};
     }
 
     TESObjectREFR* SpawnRemoteProxy(PlayerCharacter* player) {
@@ -666,6 +752,86 @@ class RuntimeBackedGameAdapter : public GameAdapter {
             maybe_set_av("Fatigue", state.stamina);
             proxy.last_stamina = state.stamina;
         }
+    }
+
+    void ApplyProxyProfile(RemoteProxy& proxy, const RemotePlayerState& state) {
+        if (proxy.reference == nullptr) {
+            return;
+        }
+
+        const CharacterProfile& profile = state.profile;
+        if (!profile.characterName.empty()
+            && profile.characterName != proxy.applied_profile.characterName) {
+            std::ostringstream command;
+            command << "SetName " << QuoteConsoleString(profile.characterName);
+            if (RunConsoleCommand(command.str(), proxy.reference)) {
+                proxy.applied_profile.characterName = profile.characterName;
+            }
+        }
+
+        if (!profile.hairFormId.empty()
+            && profile.hairFormId != proxy.applied_profile.hairFormId) {
+            std::ostringstream command;
+            command << "SetHair " << profile.hairFormId;
+            if (RunConsoleCommand(command.str(), proxy.reference)) {
+                proxy.applied_profile.hairFormId = profile.hairFormId;
+                proxy.applied_profile.hairName = profile.hairName;
+            }
+        }
+
+        if (!profile.eyesFormId.empty()
+            && profile.eyesFormId != proxy.applied_profile.eyesFormId) {
+            std::ostringstream command;
+            command << "SetEyes " << profile.eyesFormId;
+            if (RunConsoleCommand(command.str(), proxy.reference)) {
+                proxy.applied_profile.eyesFormId = profile.eyesFormId;
+                proxy.applied_profile.eyesName = profile.eyesName;
+            }
+        }
+
+        if (AxisDistance(proxy.applied_profile.scale, profile.scale) > 0.01f) {
+            std::ostringstream command;
+            command << "SetScale " << profile.scale;
+            if (RunConsoleCommand(command.str(), proxy.reference)) {
+                proxy.applied_profile.scale = profile.scale;
+            }
+        }
+
+        proxy.applied_profile.classFormId = profile.classFormId;
+        proxy.applied_profile.className = profile.className;
+        proxy.applied_profile.raceFormId = profile.raceFormId;
+        proxy.applied_profile.raceName = profile.raceName;
+        proxy.applied_profile.birthsignFormId = profile.birthsignFormId;
+        proxy.applied_profile.birthsignName = profile.birthsignName;
+        proxy.applied_profile.isFemale = profile.isFemale;
+        proxy.applied_profile.hairColorR = profile.hairColorR;
+        proxy.applied_profile.hairColorG = profile.hairColorG;
+        proxy.applied_profile.hairColorB = profile.hairColorB;
+    }
+
+    void SyncProxyEquipment(RemoteProxy& proxy, const RemotePlayerState& state) {
+        if (proxy.reference == nullptr || state.equippedWeaponFormId == proxy.equipped_weapon_form_id) {
+            return;
+        }
+
+        if (!proxy.equipped_weapon_form_id.empty()) {
+            std::ostringstream unequip_command;
+            unequip_command << "UnequipItemSilent " << proxy.equipped_weapon_form_id << " 1";
+            RunConsoleCommand(unequip_command.str(), proxy.reference);
+        }
+
+        proxy.equipped_weapon_form_id = state.equippedWeaponFormId;
+        if (proxy.equipped_weapon_form_id.empty()) {
+            return;
+        }
+
+        std::ostringstream add_command;
+        add_command << "AddItem " << proxy.equipped_weapon_form_id << " 1";
+        RunConsoleCommand(add_command.str(), proxy.reference);
+
+        std::ostringstream equip_command;
+        equip_command << "EquipItemSilent " << proxy.equipped_weapon_form_id << " 1";
+        RunConsoleCommand(equip_command.str(), proxy.reference);
     }
 
     void SyncProxyCombat(RemoteProxy& proxy, const RemotePlayerState& state) {

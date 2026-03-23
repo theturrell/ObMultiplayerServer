@@ -115,8 +115,26 @@ def main() -> None:
                             "health": 91.5,
                             "magicka": 52.0,
                             "stamina": 76.0,
-                            "equippedWeaponFormId": "",
+                            "equippedWeaponFormId": "00000D7A",
                             "combatTargetRefId": "0001ABCD",
+                            "profile": {
+                                "characterName": "Kotchking",
+                                "raceFormId": "00000907",
+                                "raceName": "Imperial",
+                                "classFormId": "0002299C",
+                                "className": "Knight",
+                                "birthsignFormId": "000224FC",
+                                "birthsignName": "The Warrior",
+                                "hairFormId": "00090475",
+                                "hairName": "Ren's Hair",
+                                "eyesFormId": "00027306",
+                                "eyesName": "Blue Eyes",
+                                "isFemale": False,
+                                "scale": 1.05,
+                                "hairColorR": 88,
+                                "hairColorG": 61,
+                                "hairColorB": 44,
+                            },
                         },
                     },
                 )
@@ -197,7 +215,14 @@ def main() -> None:
                     replayed_loot_removed = recv_json(joiner_sock)
                     assert replayed_player["type"] == "player_state"
                     assert replayed_player["payload"]["magicka"] == 52.0
+                    assert replayed_player["payload"]["equippedWeaponFormId"] == "00000D7A"
                     assert replayed_player["payload"]["combatTargetRefId"] == "0001ABCD"
+                    assert replayed_player["payload"]["profile"]["characterName"] == "Kotchking"
+                    assert replayed_player["payload"]["profile"]["raceName"] == "Imperial"
+                    assert replayed_player["payload"]["profile"]["className"] == "Knight"
+                    assert replayed_player["payload"]["profile"]["birthsignName"] == "The Warrior"
+                    assert replayed_player["payload"]["profile"]["hairFormId"] == "00090475"
+                    assert replayed_player["payload"]["profile"]["eyesFormId"] == "00027306"
                     assert replayed_quest["type"] == "quest_state"
                     assert replayed_quest["payload"]["makeActive"] is True
                     assert replayed_loot["type"] == "loot_state"

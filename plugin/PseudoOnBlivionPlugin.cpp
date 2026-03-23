@@ -15,6 +15,57 @@ std::int64_t NowMs() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
+std::string JsonEscape(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const char ch : value) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped.push_back(ch);
+            break;
+        }
+    }
+    return escaped;
+}
+
+std::string BuildCharacterProfileJson(const CharacterProfile& profile) {
+    std::ostringstream json;
+    json << "\"profile\":{"
+         << "\"characterName\":\"" << JsonEscape(profile.characterName) << "\","
+         << "\"raceFormId\":\"" << JsonEscape(profile.raceFormId) << "\","
+         << "\"raceName\":\"" << JsonEscape(profile.raceName) << "\","
+         << "\"classFormId\":\"" << JsonEscape(profile.classFormId) << "\","
+         << "\"className\":\"" << JsonEscape(profile.className) << "\","
+         << "\"birthsignFormId\":\"" << JsonEscape(profile.birthsignFormId) << "\","
+         << "\"birthsignName\":\"" << JsonEscape(profile.birthsignName) << "\","
+         << "\"hairFormId\":\"" << JsonEscape(profile.hairFormId) << "\","
+         << "\"hairName\":\"" << JsonEscape(profile.hairName) << "\","
+         << "\"eyesFormId\":\"" << JsonEscape(profile.eyesFormId) << "\","
+         << "\"eyesName\":\"" << JsonEscape(profile.eyesName) << "\","
+         << "\"isFemale\":" << (profile.isFemale ? "true" : "false") << ","
+         << "\"scale\":" << profile.scale << ","
+         << "\"hairColorR\":" << profile.hairColorR << ","
+         << "\"hairColorG\":" << profile.hairColorG << ","
+         << "\"hairColorB\":" << profile.hairColorB
+         << "}";
+    return json.str();
+}
+
 std::string BuildPlayerStateJson(
     const PluginConfig& config,
     const PlayerSnapshot& snapshot
@@ -22,8 +73,8 @@ std::string BuildPlayerStateJson(
     std::ostringstream json;
     json << "{"
          << "\"type\":\"player_state\","
-         << "\"room\":\"" << config.room << "\","
-         << "\"sender\":\"" << config.player_id << "\","
+         << "\"room\":\"" << JsonEscape(config.room) << "\","
+         << "\"sender\":\"" << JsonEscape(config.player_id) << "\","
          << "\"timestamp\":" << NowMs() << ","
          << "\"payload\":{"
          << "\"position\":{\"x\":" << snapshot.position.x
@@ -32,13 +83,14 @@ std::string BuildPlayerStateJson(
          << "\"rotation\":{\"x\":" << snapshot.rotation.x
          << ",\"y\":" << snapshot.rotation.y
          << ",\"z\":" << snapshot.rotation.z << "},"
-         << "\"cell\":\"" << snapshot.cell << "\","
+         << "\"cell\":\"" << JsonEscape(snapshot.cell) << "\","
          << "\"isInCombat\":" << (snapshot.isInCombat ? "true" : "false") << ","
          << "\"health\":" << snapshot.health << ","
          << "\"magicka\":" << snapshot.magicka << ","
          << "\"stamina\":" << snapshot.stamina << ","
-         << "\"equippedWeaponFormId\":\"" << snapshot.equippedWeaponFormId << "\","
-         << "\"combatTargetRefId\":\"" << snapshot.combatTargetRefId << "\""
+         << "\"equippedWeaponFormId\":\"" << JsonEscape(snapshot.equippedWeaponFormId) << "\","
+         << "\"combatTargetRefId\":\"" << JsonEscape(snapshot.combatTargetRefId) << "\","
+         << BuildCharacterProfileJson(snapshot.profile)
          << "}}";
     return json.str();
 }
@@ -51,11 +103,11 @@ std::string BuildAnimationEventJson(
     std::ostringstream json;
     json << "{"
          << "\"type\":\"animation_event\","
-         << "\"room\":\"" << config.room << "\","
-         << "\"sender\":\"" << config.player_id << "\","
+         << "\"room\":\"" << JsonEscape(config.room) << "\","
+         << "\"sender\":\"" << JsonEscape(config.player_id) << "\","
          << "\"timestamp\":" << NowMs() << ","
          << "\"payload\":{"
-         << "\"group\":\"" << group << "\","
+         << "\"group\":\"" << JsonEscape(group) << "\","
          << "\"loop\":" << (loop ? "true" : "false")
          << "}}";
     return json.str();
@@ -69,13 +121,13 @@ std::string BuildCombatEventJson(
     std::ostringstream json;
     json << "{"
          << "\"type\":\"combat_event\","
-         << "\"room\":\"" << config.room << "\","
-         << "\"sender\":\"" << config.player_id << "\","
+         << "\"room\":\"" << JsonEscape(config.room) << "\","
+         << "\"sender\":\"" << JsonEscape(config.player_id) << "\","
          << "\"timestamp\":" << NowMs() << ","
          << "\"payload\":{"
-         << "\"kind\":\"" << kind << "\","
-         << "\"targetRefId\":\"" << target_ref_id << "\","
-         << "\"weaponFormId\":\"\","
+         << "\"kind\":\"" << JsonEscape(kind) << "\","
+         << "\"targetRefId\":\"" << JsonEscape(target_ref_id) << "\","
+         << "\"weaponFormId\":\"\"," 
          << "\"damage\":0"
          << "}}";
     return json.str();
@@ -183,7 +235,6 @@ void PseudoOnBlivionPlugin::Start() {
     }
 
     running_ = true;
-    send_thread_ = std::thread(&PseudoOnBlivionPlugin::RunSendLoop, this);
     receive_thread_ = std::thread([this]() {
         while (running_ && client_.IsConnected()) {
             const std::string message = client_.ReceiveLine();
@@ -287,6 +338,8 @@ void PseudoOnBlivionPlugin::HandleIncomingMessage(const std::string& message) {
 }
 
 void PseudoOnBlivionPlugin::PumpGameThreadWork() {
+    Tick();
+
     std::deque<RemotePlayerState> pending;
     std::deque<RemoteAnimationEvent> pending_animation;
     std::deque<RemoteCombatEvent> pending_combat;
@@ -452,6 +505,7 @@ bool PseudoOnBlivionPlugin::TryParseRemotePlayerState(
     TryExtractString(message, "\"combatTargetRefId\"", outState.combatTargetRefId);
     outState.isInCombat = is_in_combat;
     outState.timestamp = timestamp;
+    TryExtractCharacterProfile(message, outState.profile);
     return true;
 }
 
@@ -740,6 +794,29 @@ bool PseudoOnBlivionPlugin::TryExtractBool(
         return true;
     }
     return false;
+}
+
+bool PseudoOnBlivionPlugin::TryExtractCharacterProfile(
+    const std::string& source,
+    CharacterProfile& profile
+) const {
+    TryExtractString(source, "\"characterName\"", profile.characterName);
+    TryExtractString(source, "\"raceFormId\"", profile.raceFormId);
+    TryExtractString(source, "\"raceName\"", profile.raceName);
+    TryExtractString(source, "\"classFormId\"", profile.classFormId);
+    TryExtractString(source, "\"className\"", profile.className);
+    TryExtractString(source, "\"birthsignFormId\"", profile.birthsignFormId);
+    TryExtractString(source, "\"birthsignName\"", profile.birthsignName);
+    TryExtractString(source, "\"hairFormId\"", profile.hairFormId);
+    TryExtractString(source, "\"hairName\"", profile.hairName);
+    TryExtractString(source, "\"eyesFormId\"", profile.eyesFormId);
+    TryExtractString(source, "\"eyesName\"", profile.eyesName);
+    TryExtractBool(source, "\"isFemale\"", profile.isFemale);
+    TryExtractFloat(source, "\"scale\"", profile.scale);
+    TryExtractInt32(source, "\"hairColorR\"", profile.hairColorR);
+    TryExtractInt32(source, "\"hairColorG\"", profile.hairColorG);
+    TryExtractInt32(source, "\"hairColorB\"", profile.hairColorB);
+    return true;
 }
 
 }  // namespace pseudo_onblivion

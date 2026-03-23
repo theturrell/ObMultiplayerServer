@@ -11,6 +11,25 @@ struct Vec3 {
     float z;
 };
 
+struct CharacterProfile {
+    std::string characterName;
+    std::string raceFormId;
+    std::string raceName;
+    std::string classFormId;
+    std::string className;
+    std::string birthsignFormId;
+    std::string birthsignName;
+    std::string hairFormId;
+    std::string hairName;
+    std::string eyesFormId;
+    std::string eyesName;
+    bool isFemale = false;
+    float scale = 1.0f;
+    std::int32_t hairColorR = 0;
+    std::int32_t hairColorG = 0;
+    std::int32_t hairColorB = 0;
+};
+
 struct PlayerSnapshot {
     Vec3 position;
     Vec3 rotation;
@@ -21,6 +40,7 @@ struct PlayerSnapshot {
     std::string equippedWeaponFormId;
     std::string combatTargetRefId;
     bool isInCombat;
+    CharacterProfile profile;
 };
 
 struct RemotePlayerState {
@@ -35,6 +55,7 @@ struct RemotePlayerState {
     std::string combatTargetRefId;
     bool isInCombat;
     std::int64_t timestamp;
+    CharacterProfile profile;
 };
 
 struct RemoteQuestState {
