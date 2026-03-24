@@ -294,6 +294,8 @@ class JoinerApp:
         self.root.title(APP_NAME)
         self.root.geometry("760x560")
         self.root.minsize(700, 520)
+        self.canvas: tk.Canvas | None = None
+        self.scrollable_frame: ttk.Frame | None = None
 
         self.queue: Queue[tuple[str, str]] = Queue()
         self.busy = False
@@ -329,8 +331,23 @@ class JoinerApp:
         style.configure("TEntry", padding=7)
 
     def build_ui(self) -> None:
-        root_frame = ttk.Frame(self.root, style="Root.TFrame", padding=18)
-        root_frame.pack(fill="both", expand=True)
+        outer_frame = ttk.Frame(self.root, style="Root.TFrame")
+        outer_frame.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(outer_frame, bg="#f3ede4", highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(outer_frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        root_frame = ttk.Frame(canvas, style="Root.TFrame", padding=18)
+        window_id = canvas.create_window((0, 0), window=root_frame, anchor="nw")
+        root_frame.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+        canvas.bind_all("<MouseWheel>", self.on_mousewheel)
+
+        self.canvas = canvas
+        self.scrollable_frame = root_frame
 
         ttk.Label(root_frame, text="Pseudo-OnBlivion Joiner", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
@@ -395,6 +412,11 @@ class JoinerApp:
 
         for column in range(3):
             card.columnconfigure(column, weight=1 if column == 1 else 0)
+
+    def on_mousewheel(self, event: tk.Event) -> None:
+        if self.canvas is None:
+            return
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def add_field(
         self,
