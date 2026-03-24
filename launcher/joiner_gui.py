@@ -154,6 +154,9 @@ def write_update_script(root: Path) -> Path:
                 "}",
                 "Start-Sleep -Milliseconds 500",
                 "New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null",
+                "Get-ChildItem -LiteralPath $TargetDir -Force -ErrorAction SilentlyContinue |",
+                "    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue",
+                "New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null",
                 "robocopy $SourceDir $TargetDir /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null",
                 "$code = $LASTEXITCODE",
                 "if ($code -ge 8) {",
@@ -310,8 +313,8 @@ class JoinerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("760x560")
-        self.root.minsize(700, 520)
+        self.root.geometry("1080x860")
+        self.root.minsize(860, 680)
         self.canvas: tk.Canvas | None = None
         self.scrollable_frame: ttk.Frame | None = None
 
