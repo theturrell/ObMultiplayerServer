@@ -27,12 +27,15 @@ CloseApplicationsFilter=PseudoOnBlivionHost.exe,PseudoOnBlivionJoiner.exe,Pseudo
 Type: files; Name: "{app}\PseudoOnBlivionJoiner.exe"
 Type: files; Name: "{app}\README_JOINER.txt"
 Type: files; Name: "{app}\QUICKSTART.md"
+Type: files; Name: "{app}\version.json"
 Type: filesandordirs; Name: "{app}\scripts"
+Type: filesandordirs; Name: "{app}\Data"
 
 [Files]
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\QUICKSTART.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\README_JOINER.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\version.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\PseudoOnBlivionJoiner.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\Data\OBSE\Plugins\*"; DestDir: "{app}\Data\OBSE\Plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\PseudoOnBlivion-Joiner\Data\OBSE\Plugins\*"; DestDir: "{code:GetGamePluginDir}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -46,6 +49,7 @@ Filename: "{app}\PseudoOnBlivionJoiner.exe"; Description: "Open the joiner app";
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\scripts"
+Type: filesandordirs; Name: "{app}\Data"
 
 [Code]
 var

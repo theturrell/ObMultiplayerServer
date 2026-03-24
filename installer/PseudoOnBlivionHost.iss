@@ -30,14 +30,17 @@ Name: "desktopicon"; Description: "Create a desktop shortcut for the host relay"
 Type: files; Name: "{app}\PseudoOnBlivionHost.exe"
 Type: files; Name: "{app}\README_HOST.txt"
 Type: files; Name: "{app}\QUICKSTART.md"
+Type: files; Name: "{app}\version.json"
 Type: filesandordirs; Name: "{app}\server"
 Type: filesandordirs; Name: "{app}\scripts"
+Type: filesandordirs; Name: "{app}\Data"
 
 [Files]
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\server\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\QUICKSTART.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\README_HOST.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\PseudoOnBlivion-Host\version.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\PseudoOnBlivionHost.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\Data\OBSE\Plugins\*"; DestDir: "{app}\Data\OBSE\Plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceRoot}\PseudoOnBlivion-Host\Data\OBSE\Plugins\*"; DestDir: "{code:GetGamePluginDir}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -55,6 +58,7 @@ Filename: "{app}\PseudoOnBlivionHost.exe"; Description: "Open the host control p
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\server"
 Type: filesandordirs; Name: "{app}\scripts"
+Type: filesandordirs; Name: "{app}\Data"
 
 [Code]
 var

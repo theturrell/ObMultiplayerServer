@@ -81,7 +81,14 @@ def can_write_to_directory(path: Path) -> bool:
         return False
 
 
-def launch_update_script(script_path: Path, target_dir: Path, source_dir: Path, exe_name: str) -> None:
+def launch_update_script(
+    script_path: Path,
+    target_dir: Path,
+    source_dir: Path,
+    exe_name: str,
+    process_names: list[str],
+) -> None:
+    process_arg = ";".join(process_names)
     command = [
         "powershell",
         "-ExecutionPolicy",
@@ -96,6 +103,8 @@ def launch_update_script(script_path: Path, target_dir: Path, source_dir: Path, 
         str(target_dir),
         "-ExeName",
         exe_name,
+        "-ProcessNames",
+        process_arg,
     ]
 
     if can_write_to_directory(target_dir):
@@ -128,13 +137,22 @@ def write_update_script(root: Path) -> Path:
                 "    [int]$WaitPid,",
                 "    [string]$SourceDir,",
                 "    [string]$TargetDir,",
-                "    [string]$ExeName",
+                "    [string]$ExeName,",
+                "    [string]$ProcessNames",
                 ")",
                 "$deadline = (Get-Date).AddSeconds(30)",
                 "while (Get-Process -Id $WaitPid -ErrorAction SilentlyContinue) {",
                 "    if ((Get-Date) -gt $deadline) { break }",
                 "    Start-Sleep -Milliseconds 500",
                 "}",
+                "$names = @()",
+                "if ($ProcessNames) {",
+                "    $names = $ProcessNames.Split(';') | Where-Object { $_ -and $_.Trim() }",
+                "}",
+                "foreach ($name in $names) {",
+                "    Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+                "}",
+                "Start-Sleep -Milliseconds 500",
                 "New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null",
                 "robocopy $SourceDir $TargetDir /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null",
                 "$code = $LASTEXITCODE",
@@ -674,7 +692,13 @@ class JoinerApp:
 
             script_path = write_update_script(temp_root)
             self.post_status("Applying update and relaunching the joiner app...")
-            launch_update_script(script_path, app_root(), source_dir, "PseudoOnBlivionJoiner.exe")
+            launch_update_script(
+                script_path,
+                app_root(),
+                source_dir,
+                "PseudoOnBlivionJoiner.exe",
+                ["PseudoOnBlivionJoiner"],
+            )
             self.root.after(100, self.root.destroy)
 
         self.run_background("Updating joiner app...", work)
